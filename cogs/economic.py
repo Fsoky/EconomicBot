@@ -71,7 +71,11 @@ class Economic(commands.Cog):
 			await ctx.send(embed = discord.Embed(
 				description = f"__{ctx.author}__, конечно извините меня, но проход хацкерам сегодня закрыт."
 			))
-		else:
+			elif amount > self.collection.find_one({'_id': ctx.author.id})['balance']:
+                await ctx.send(embed = discord.Embed(
+                    description = f"__{ctx.author}__, у вас не достаточно денег для перевода."
+                ))
+            else:
 			self.collection.update_one({"_id": ctx.author.id},
 				{"$inc": {"balance": -amount}})
 
