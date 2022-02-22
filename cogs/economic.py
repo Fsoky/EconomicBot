@@ -1,85 +1,63 @@
-import discord
-from discord.ext import commands
-from pymongo import MongoClient
+import disnake
+from disnake.ext import commands
 
-"""Plan
-
-1. balance -> вывод баланса пользователя
-2. pay -> перевод денег
-3. LVL-System
-4. Custom stores
-
-"""
+from motor.motor_asyncio import AsyncIOClient
 
 
 class Economic(commands.Cog):
 
-	def __init__(self, client):
-		self.client = client
+	def __init__(self, bot):
+		self.bot = bot
 
-		self.cluster = MongoClient("link")
-		self.collection = self.cluster.ecodb.colldb
-		self.collshop = self.cluster.ecodb.collshop
-		self.collwh = self.cluster.ecodb.collwarehouse
-
-
-	@commands.Cog.listener()
-	async def on_message(self, message):
-		if message.author == self.client.user:
-			return
-
-		user = message.author
-		data = self.collection.find_one({"_id": user.id})
-
-		if data["xp"] == 500 + 100 * data["lvl"]:
-			self.collection.update_one({"_id": user.id},
-				{"$set": {"lvl": data["lvl"] + 1}})
-			self.collection.update_one({"_id": user.id},
-				{"$set": {"xp": 0}})
-
-			await message.channel.send(f"{user.mention} + 1 lvl")
-		else:
-			self.collection.update_one({"_id": user.id},
-				{"$set": {"xp": data["xp"] + 50}})
-
+		self.cluster = AsyncIOClient("LINK")
+		self.coll = self.cluster.DATABASE_NAME.COLLECTION_NAME
 
 	@commands.command(
-		name = "баланс",
-		aliases = ["balance", "cash"],
-		brief = "Вывод баланса пользователя",
-		usage = "balance <@user>"
+		name="баланс",
+		aliases=["cash"],
+		brief="Вывод баланса пользователя",
+		usage="balance <@user>"
 	)
-	async def user_balance(self, ctx, member: discord.Member = None):
-		if member is None:
-			await ctx.send(embed = discord.Embed(
-				description = f"Баланс пользователя __{ctx.author}__: **{self.collection.find_one({'_id': ctx.author.id})['balance']}**"
-			))
-		else:
-			await ctx.send(embed = discord.Embed(
-				description = f"Баланс пользователя __{member}__: **{self.collection.find_one({'_id': member.id})['balance']}**"
-			))
+	async def balance(self, ctx, member: disnake.Member=None):
+		values = {"member_id": ctx.author.id, "guild_id": ctx.guild.id}
+		embed = disnake.Embed(
+			description=f"Баланса пользователя __{ctx.author}__: **{await self.coll.find_one(values)}**"
+		)
 
+		if member is not None:
+			values["member_id"] = member.id
+			embed.description = f"Баланса пользователя __{ctx.author}__: **{await self.coll.find_one(values)}**"
+
+		await ctx.send(embed=embed)
 
 	@commands.command(
-		name = "перевод",
-		aliases = ["pay", "givecash"],
-		brief = "Перевод денег другому пользователю",
-		usage = "pay <@user> <amount>"	
+		name="перевод",
+		aliases=["give-cash", "givecash"],
+		brief="Перевод денег другому пользователю",
+		usage="pay <@user> <amount>"
 	)
-	async def pay_cash(self, ctx, member: discord.Member, amount: int):
+	async def pay(self, ctx, member: disnake.Member, amount: int):
+		values = {"member_id": ctx.author.id, "guild_id": ctx.guild.id}
+		balance = await self.coll.find_one(values)["balance"]
+		embed = disnake.Embed()
+
+		if member.id == ctx.author.id:
+			embed.description = f"__{ctx.author}__, конечно извините меня, но проход жучкам сегодня закрыт."
+
 		if amount <= 0:
-			await ctx.send(embed = discord.Embed(
-				description = f"__{ctx.author}__, конечно извините меня, но проход хацкерам сегодня закрыт."
-			))
+			embed.description = f"__{ctx.author}__, конечно извините меня, но проход жучкам сегодня закрыт."
+		elif balance <= 0:
+			embed.description = f"__{ctx.author}__, недостаточно средств"
 		else:
-			self.collection.update_one({"_id": ctx.author.id},
-				{"$inc": {"balance": -amount}})
+			await self.coll.update_one(values, {"$inc": {"balance" -amount}})
 
-			self.collection.update_one({"_id": member.id},
-				{"$inc": {"balance": +amount}})
+			values["member_id"] = member.id
+			await self.coll.update_one(values, {"$inc": "balance" +amount})
 
-			await ctx.message.add_reaction("✅")
+			embed.description = f"__{ctx.author}__, транзакция прошла успешно"
+
+		await ctx.send(embed=embed, delete_after=5)
 
 
-def setup(client):
-	client.add_cog(Economic(client))
+def setup(bot):
+	bot.add_cog(Economic(bot))
