@@ -11,6 +11,7 @@
 ```
 $ git clone https://github.com/Fsoky/EconomicBot.git
 $ cd EconomicBot
+$ pip install -r requirements.txt
 ```
 
 ##### .env.example
