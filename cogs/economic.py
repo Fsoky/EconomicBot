@@ -1,44 +1,40 @@
 import disnake
 from disnake.ext import commands
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from utils import database
 
 
 class Economic(commands.Cog):
 
 	def __init__(self, bot):
 		self.bot = bot
-
-		self.cluster = AsyncIOMotorClient("LINK")
-		self.coll = self.cluster.DATABASE_NAME.COLLECTION_NAME
+		self.db = database.DataBase()
 
 	@commands.command(
 		name="баланс",
-		aliases=["cash"],
+		aliases=["cash", "balance"],
 		brief="Вывод баланса пользователя",
 		usage="balance <@user>"
 	)
-	async def balance(self, ctx, member: disnake.Member=None):
-		values = {"member_id": ctx.author.id, "guild_id": ctx.guild.id}
+	async def user_balance(self, ctx, member: disnake.Member=None):
+		balance = await self.db.get_data(ctx.author)
 		embed = disnake.Embed(
-			description=f"Баланса пользователя __{ctx.author}__: **{await self.coll.find_one(values)}**"
+			description=f"Баланса пользователя __{ctx.author}__: **{balance['balance']}**"
 		)
 
 		if member is not None:
-			values["member_id"] = member.id
-			embed.description = f"Баланса пользователя __{ctx.author}__: **{await self.coll.find_one(values)}**"
-
+			balance = await self.db.get_data(member)
+			embed.description = f"Баланса пользователя __{member}__: **{balance['balance']}**"
 		await ctx.send(embed=embed)
 
 	@commands.command(
 		name="перевод",
-		aliases=["give-cash", "givecash"],
+		aliases=["give-cash", "givecash", "pay"],
 		brief="Перевод денег другому пользователю",
 		usage="pay <@user> <amount>"
 	)
-	async def pay(self, ctx, member: disnake.Member, amount: int):
-		values = {"member_id": ctx.author.id, "guild_id": ctx.guild.id}
-		balance = await self.coll.find_one(values)["balance"]
+	async def pay_cash(self, ctx, member: disnake.Member, amount: int):
+		balance = await self.db.get_data(ctx.author)
 		embed = disnake.Embed()
 
 		if member.id == ctx.author.id:
@@ -46,13 +42,11 @@ class Economic(commands.Cog):
 
 		if amount <= 0:
 			embed.description = f"__{ctx.author}__, конечно извините меня, но проход жучкам сегодня закрыт."
-		elif balance <= 0:
+		elif balance["balance"] <= 0:
 			embed.description = f"__{ctx.author}__, недостаточно средств"
 		else:
-			await self.coll.update_one(values, {"$inc": {"balance" -amount}})
-
-			values["member_id"] = member.id
-			await self.coll.update_one(values, {"$inc": "balance" +amount})
+			await self.db.update_member(ctx.author, {"$inc": {"balance": -amount}})
+			await self.db.update_member(member, {"$inc": {"balance": amount}})
 
 			embed.description = f"__{ctx.author}__, транзакция прошла успешно"
 
