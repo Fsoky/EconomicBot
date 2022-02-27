@@ -3,6 +3,8 @@ import os
 import disnake
 from disnake.ext import commands
 
+import config
+
 bot = commands.Bot(command_prefix="!", intents=disnake.Intents(messages=True, guild_messages=True, members=True, guilds=True))
 
 
@@ -28,4 +30,4 @@ for filename in os.listdir("./cogs"):
 	if filename.endswith(".py"):
 		bot.load_extension(f"cogs.{filename[:-3]}")
 
-bot.run("TOKEN")
+bot.run(config.TOKEN)
