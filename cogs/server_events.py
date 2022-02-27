@@ -1,43 +1,29 @@
 import disnake
 from disnake.ext import commands
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from utils import database
 
 
 class ServerEvents(commands.Cog):
 
 	def __init__(self, bot):
 		self.bot = bot
-
-		self.cluster = AsyncIOMotorClient("LINK")
-		self.coll = self.cluster.DATABASE_NAME.COLLECTION_NAME
+		self.db = database.DataBase()
 
 	@commands.Cog.listener()
-	async def on_ready():
-		for guild in bot.guilds:
-			if await self.coll.count_documents({"member_id": member.id}) == 0:
-				await self.coll.insert_one(
-					{
-						"member_id": member.id,
-						"guild_id": guild.id,
-						"balance": 300,
-						"xp": 0,
-						"lvl": 1
-					}
-				)
+	async def on_ready(self):
+		for guild in self.bot.guilds:
+			for member in guild.members:
+				await self.db.insert_new_member(member)
 
 	@commands.Cog.listener()
-	async def on_message(message):
+	async def on_message(self, message):
 		if message.author == self.bot.user:
 			return
 
-		data = await self.coll.find_one({"member_id": message.author.id, "guild_id": message.guild.id})
+		data = await self.db.get_data(message.author)
 		if data["xp"] == 500+100 * data["lvl"]:
-			await self.coll.update_one(
-				{
-					"member_id": message.author.id,
-					"guild_id": message.guild.id
-				},
+			await self.db.update_member(message.author,
 				{
 					"$set": {
 						"lvl": data["lvl"] + 1,
@@ -45,14 +31,9 @@ class ServerEvents(commands.Cog):
 					}
 				}
 			)
-
 			await message.channel.send(f"{message.author.mention} +1 LVL")
 		else:
-			await self.coll.update_one(
-				{
-					"member_id": message.author.id,
-					"guild_id": message.guild.id
-				},
+			await self.db.update_member(message.author,
 				{
 					"$set": {
 						"xp": data["xp"] + 50
@@ -61,20 +42,11 @@ class ServerEvents(commands.Cog):
 			)
 
 	@commands.Cog.listener()
-	async def on_member_join(member):
-		if await self.coll.count_documents({"member_id": member.id}) == 0:
-			await self.coll.insert_one(
-				{
-					"member_id": member.id,
-					"guild_id": member.guild.id,
-					"balance": 300,
-					"xp": 0,
-					"lvl": 1
-				}
-			)
+	async def on_member_join(self, member):
+		await self.db.insert_new_member(member)
 
 	@commands.Cog.listener()
-	async def on_command_error(ctx, error):
+	async def on_command_error(self, ctx, error):
 		print(error)
 
 		if isinstance(error, commands.UserInputError):
